@@ -4,7 +4,6 @@ const app = express();
 require('dotenv').config()
 
 const db = require("./app/models");
-// const dbConfig = require("./app/config/db.config");
 const Role = db.role;
 db.mongoose
   .connect(`mongodb://${process.env.HOST}:${process.env.PORT}/${process.env.DB}`, {
