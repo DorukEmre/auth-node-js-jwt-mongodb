@@ -1,7 +1,6 @@
 require('dotenv').config()
 const db = require("../models");
-const User = db.user;
-const Role = db.role;
+const { user: User, role: Role, refreshToken: RefreshToken } = db;
 var jwt = require("jsonwebtoken");
 var bcrypt = require("bcryptjs");
 
@@ -68,7 +67,7 @@ exports.signin = (req, res) => {
     username: req.body.username
   })
     .populate("roles", "-__v")
-    .exec((err, user) => {
+    .exec(async (err, user) => {
       if (err) {
         res.status(500).send({ message: err });
         return;
@@ -86,10 +85,11 @@ exports.signin = (req, res) => {
           message: "Invalid Password."
         });
       }
-      var token = jwt.sign({ id: user.id }, process.env.SECRET, {
-        expiresIn: 86400 // 24 hours
+      let token = jwt.sign({ id: user.id }, process.env.SECRET, {
+        expiresIn: process.env.JWT_EXPIRATION
       });
-      var authorities = [];
+      let refreshToken = await RefreshToken.createToken(user);
+      let authorities = [];
       for (let i = 0; i < user.roles.length; i++) {
         authorities.push("ROLE_" + user.roles[i].name.toUpperCase());
       }
@@ -98,7 +98,47 @@ exports.signin = (req, res) => {
         username: user.username,
         email: user.email,
         roles: authorities,
-        accessToken: token
+        accessToken: token,
+        refreshToken: refreshToken
       });
     });
+};
+
+// In refreshToken() function:
+//     Firstly, we get the Refresh Token from request data
+//     Next, get the RefreshToken object {id, user, token, expiryDate} from raw Token using RefreshToken model static method
+//     We verify the token (expired or not) basing on expiryDate field. If the Refresh Token was expired, remove it from MongoDB database and return message
+//     Continue to use user _id field of RefreshToken object as parameter to generate new Access Token using jsonwebtoken library
+//     Return { new accessToken, refreshToken } if everything is done
+//     Or else, send error message
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken: requestToken } = req.body;
+  if (requestToken == null) {
+    return res.status(403).json({ message: "Refresh Token is required!" });
+  }
+  try {
+    let refreshToken = await RefreshToken.findOne({ token: requestToken });
+    if (!refreshToken) {
+      res.status(403).json({ message: "Refresh token is not in database!" });
+      return;
+    }
+    if (RefreshToken.verifyExpiration(refreshToken)) {
+      RefreshToken.findByIdAndRemove(refreshToken._id, { useFindAndModify: false }).exec();
+      
+      res.status(403).json({
+        message: "Refresh token was expired. Please make a new signin request",
+      });
+      return;
+    }
+    let newAccessToken = jwt.sign({ id: refreshToken.user._id }, process.env.SECRET, {
+      expiresIn: process.env.JWT_EXPIRATION
+    });
+    return res.status(200).json({
+      accessToken: newAccessToken,
+      refreshToken: refreshToken.token,
+    });
+  } catch (err) {
+    return res.status(500).send({ message: err });
+  }
 };
