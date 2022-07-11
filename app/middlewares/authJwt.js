@@ -8,21 +8,29 @@ const Role = db.role;
 // - check if token is provided, legal or not. We get token from x-access-token of HTTP headers, then use jsonwebtoken's verify() function
 // - check if roles of the user contains required role or not
 
-verifyToken = (req, res, next) => {
+const { TokenExpiredError } = jwt;
+const catchError = (err, res) => {
+  if (err instanceof TokenExpiredError) {
+    return res.status(401).send({ message: "Unauthorized. Access Token has expired." });
+  }
+  return res.sendStatus(401).send({ message: "Unauthorized." });
+}
+
+const verifyToken = (req, res, next) => {
   let token = req.headers["x-access-token"];
   if (!token) {
-    return res.status(403).send({ message: "No token provided!" });
+    return res.status(403).send({ message: "No token provided." });
   }
   jwt.verify(token, process.env.SECRET, (err, decoded) => {
     if (err) {
-      return res.status(401).send({ message: "Unauthorized!" });
+      return catchError(err, res);
     }
     req.userId = decoded.id;
     next();
   });
 };
 
-isAdmin = (req, res, next) => {
+const isAdmin = (req, res, next) => {
   User.findById(req.userId).exec((err, user) => {
     if (err) {
       res.status(500).send({ message: err });
@@ -43,14 +51,14 @@ isAdmin = (req, res, next) => {
             return;
           }
         }
-        res.status(403).send({ message: "Require Admin Role" });
+        res.status(403).send({ message: "Require Admin Role." });
         return;
       }
     );
   });
 };
 
-isModerator = (req, res, next) => {
+const isModerator = (req, res, next) => {
   User.findById(req.userId).exec((err, user) => {
     if (err) {
       res.status(500).send({ message: err });
@@ -71,7 +79,7 @@ isModerator = (req, res, next) => {
             return;
           }
         }
-        res.status(403).send({ message: "Require Moderator Role" });
+        res.status(403).send({ message: "Require Moderator Role." });
         return;
       }
     );
