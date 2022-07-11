@@ -1,4 +1,7 @@
 Adapted from https://www.bezkoder.com/node-js-mongodb-auth-jwt/
+and
+https://www.bezkoder.com/jwt-refresh-token-node-js-mongodb/
+
 
 #### Token Based Authentication
 
